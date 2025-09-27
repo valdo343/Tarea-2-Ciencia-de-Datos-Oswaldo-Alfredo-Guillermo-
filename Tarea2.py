@@ -300,7 +300,7 @@ for col in cols_with_unknown:
 # Verificamos que ya no hay datos vacíos
 print(df.info())
 
-# Eliminamos la columna default debido a que hay solo 3 sí en más de 30 mil registros.
+# Eliminamos la columna default debido a que originalmente había solo 3 sí en más de 30 mil registros.
 df_drop = df.drop(columns=['default'])
 print(df_drop.columns)
 

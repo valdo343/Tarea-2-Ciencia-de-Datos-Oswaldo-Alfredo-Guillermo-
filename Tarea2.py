@@ -89,11 +89,13 @@ plt.figure(figsize=(10,8))
 sns.heatmap(df_encoded.corr(), annot=False, cmap="coolwarm")
 plt.show()
 
+
 # Histograma de la variable objetivo
 plt.figure(figsize=(8, 5))
 sns.histplot(df_encoded['y'], kde=False, color="skyblue")
 plt.xlabel("Variable Objetivo (y)")
 plt.ylabel("Frecuencia")
+plt.savefig("Histograma variable de respuesta.png", dpi = 500)
 
 
 
@@ -138,7 +140,7 @@ y_pred_lda = lda.predict(x_test)
 #=====================================
 from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 # Entrenar
-qda = QuadraticDiscriminantAnalysis()
+qda = QuadraticDiscriminantAnalysis(reg_param=0.1)
 qda.fit(x_train, y_train)
 # Evaluar
 y_pred_qda = qda.predict(x_test)
@@ -162,25 +164,25 @@ y_pred_knn = knn.predict(x_test)
 results = {
     "Naive Bayes": {
         "Acc": accuracy_score(y_test, y_pred_nb),
-        "Precisión": precision_score(y_test, y_pred_nb),
+        "Precision": precision_score(y_test, y_pred_nb),
         "Recall": recall_score(y_test, y_pred_nb),
         "F1": f1_score(y_test, y_pred_nb)
     },
     "LDA": {
         "Acc": accuracy_score(y_test, y_pred_lda),
-        "Precisión": precision_score(y_test, y_pred_lda),
+        "Precision": precision_score(y_test, y_pred_lda),
         "Recall": recall_score(y_test, y_pred_lda),
         "F1": f1_score(y_test, y_pred_lda)
     },
     "QDA": {
         "Acc": accuracy_score(y_test, y_pred_qda),
-        "Precisión": precision_score(y_test, y_pred_qda),
+        "Precision": precision_score(y_test, y_pred_qda),
         "Recall": recall_score(y_test, y_pred_qda),
         "F1": f1_score(y_test, y_pred_qda)
     },
     "k-NN (k=5)": {
         "Acc": accuracy_score(y_test, y_pred_knn),
-        "Precisión": precision_score(y_test, y_pred_knn),
+        "Precision": precision_score(y_test, y_pred_knn),
         "Recall": recall_score(y_test, y_pred_knn),
         "F1": f1_score(y_test, y_pred_knn)
     }
@@ -206,15 +208,10 @@ models = {
     "k-NN (k=5)": KNeighborsClassifier(n_neighbors=5)
 }
 
-
-# Definimos la especificidad como el recall de la clase negativa (0)
-specificity = make_scorer(recall_score, pos_label=0)
-
 scoring = {
     "Accuracy": "accuracy",
     "Precision": "precision",
     "Recall": "recall",       # sensibilidad 
-    "Specificity": specificity,
     "F1": "f1",
 }
 
@@ -265,6 +262,7 @@ for ax, (name, model) in zip(axes, trained_models.items()):
 
 plt.tight_layout()
 plt.show()
+plt.savefig("Matrices de confusion1.png", dpi = 500)
 
 
 
@@ -513,4 +511,5 @@ for ax, (name, model) in zip(axes, trained_models.items()):
     ax.set_ylabel("Real")
 
 plt.tight_layout()
+plt.savefig("Matrices de confusion2.png", dpi = 500)
 plt.show()

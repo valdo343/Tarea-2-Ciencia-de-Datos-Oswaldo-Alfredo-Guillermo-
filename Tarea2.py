@@ -7,7 +7,9 @@ from plotly.subplots import make_subplots
 from scipy.stats import anderson
 import seaborn as sns
 from sklearn.model_selection import train_test_split
+import random
 
+random.seed(42) 
 pd.set_option('display.max_columns', None)
 
 
@@ -30,6 +32,9 @@ def imputar_aleatorio(col):
 
 #Read data
 df = pd.read_csv('./data/data.csv', sep=';')
+
+# Quitamos la variable "duration"
+df = df.drop(columns = "duration")
 
 # Inicialmente vemos que no hay datos vacíos, pero hay varios "unknown". Dichos datos los consideraremos como vacíos.
 print(df)
@@ -87,6 +92,7 @@ print(df_encoded["education"].value_counts())
 # Mapa de correlación entre nuestras variables
 plt.figure(figsize=(10,8))
 sns.heatmap(df_encoded.corr(), annot=False, cmap="coolwarm")
+plt.savefig("Corrmatrix.png", dpi = 650)
 plt.show()
 
 
@@ -134,6 +140,31 @@ y_pred_lda = lda.predict(x_test)
 
 
 
+#=====================================
+#= Fisher=
+#=====================================
+
+# Entrenar
+lda_F = LinearDiscriminantAnalysis(n_components=1)
+x_lda_F = lda_F.fit_transform(x_train, y_train)
+
+# Evaluar
+y_pred_F = lda_F.predict(x_test)
+
+# 3. Graficar proyección
+plt.figure(figsize=(8,5))
+plt.hist(x_lda_F[y_train==0], bins=30, alpha=0.7, label="Clase 0 (no)")
+plt.hist(x_lda_F[y_train==1], bins=30, alpha=0.7, label="Clase 1 (sí)")
+plt.xlabel("Proyección de Fisher (LD1)")
+plt.ylabel("Frecuencia")
+plt.title("Separación de clases con el método de Fisher")
+plt.legend()
+plt.savefig("Proyección de Fisher.png", dpi = 500)
+plt.show()
+
+
+
+
 
 #=====================================
 # QDA (Quadratic Discriminant Analysis) =
@@ -157,6 +188,23 @@ knn = KNeighborsClassifier(n_neighbors=5)
 knn.fit(x_train, y_train)
 # Evaluar
 y_pred_knn = knn.predict(x_test)
+
+
+
+#=====================================
+# Logistic Regression =
+#=====================================
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+
+# Crear y entrenar modelo
+log_reg = LogisticRegression(max_iter=2000)
+log_reg.fit(x_train, y_train)
+
+# Predicciones
+y_pred_lr = log_reg.predict(x_test)
+
 
 
 
@@ -185,6 +233,18 @@ results = {
         "Precision": precision_score(y_test, y_pred_knn),
         "Recall": recall_score(y_test, y_pred_knn),
         "F1": f1_score(y_test, y_pred_knn)
+    },
+    "Fisher": {
+        "Acc": accuracy_score(y_test, y_pred_F),
+        "Precision": precision_score(y_test, y_pred_F),
+        "Recall": recall_score(y_test, y_pred_F),
+        "F1": f1_score(y_test, y_pred_F)
+    },
+    "Logistic Regression": {
+        "Acc": accuracy_score(y_test, y_pred_lr),
+        "Precision": precision_score(y_test, y_pred_lr),
+        "Recall": recall_score(y_test, y_pred_lr),
+        "F1": f1_score(y_test, y_pred_lr)
     }
 }
 
@@ -197,7 +257,7 @@ print(df_results.round(3))
 # Validación cruzada comparativa
 #=====================================
 
-from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import cross_validate
 from sklearn.metrics import make_scorer, recall_score, precision_score, f1_score
 
@@ -205,13 +265,15 @@ models = {
     "Naive Bayes": GaussianNB(),
     "LDA": LinearDiscriminantAnalysis(),
     "QDA": QuadraticDiscriminantAnalysis(reg_param=0.1),
-    "k-NN (k=5)": KNeighborsClassifier(n_neighbors=5)
+    "k-NN (k=5)": KNeighborsClassifier(n_neighbors=5),
+    "Fisher": LinearDiscriminantAnalysis(n_components=1),
+    "Logistic Regression": LogisticRegression(max_iter=2000)
 }
 
 scoring = {
     "Accuracy": "accuracy",
     "Precision": "precision",
-    "Recall": "recall",       # sensibilidad 
+    "Recall": "recall",       # Sensibilidad 
     "F1": "f1",
 }
 
@@ -245,11 +307,13 @@ trained_models = {
     "Naive Bayes": nb,
     "LDA": lda,
     "QDA": qda,
-    "k-NN": knn
+    "k-NN": knn,
+    "Fisher": lda_F,
+    "Regresión logística": log_reg
 }
 
 # Graficar matrices de confusión
-fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+fig, axes = plt.subplots(3, 2, figsize=(10, 10))
 axes = axes.ravel()
 
 for ax, (name, model) in zip(axes, trained_models.items()):
@@ -261,8 +325,9 @@ for ax, (name, model) in zip(axes, trained_models.items()):
     ax.set_ylabel("Real")
 
 plt.tight_layout()
+plt.savefig("Matrices de confusion1.png", dpi = 700)
 plt.show()
-plt.savefig("Matrices de confusion1.png", dpi = 500)
+
 
 
 
@@ -284,6 +349,9 @@ plt.savefig("Matrices de confusion1.png", dpi = 500)
 
 # Leemos los datos
 df = pd.read_csv('./data/data.csv', sep=';')
+
+# Quitamos la variable "duration"
+df = df.drop(columns = "duration")
 
 # Revisamos cuáles columnas tienen datos "unknown"
 cols_with_unknown = [col for col in df.columns if df[col].isin(["unknown"]).any()]
@@ -373,6 +441,28 @@ lda.fit(x_train, y_train)
 y_pred_lda = lda.predict(x_test)
 
 
+#=====================================
+#= Fisher=
+#=====================================
+
+# Entrenar
+lda_F = LinearDiscriminantAnalysis(n_components=1)
+x_lda_F = lda_F.fit_transform(x_train, y_train)
+
+# Evaluar
+y_pred_F = lda_F.predict(x_test)
+
+# 3. Graficar proyección
+plt.figure(figsize=(8,5))
+plt.hist(x_lda_F[y_train==0], bins=30, alpha=0.7, label="Clase 0 (no)")
+plt.hist(x_lda_F[y_train==1], bins=30, alpha=0.7, label="Clase 1 (sí)")
+plt.xlabel("Proyección de Fisher (LD1)")
+plt.ylabel("Frecuencia")
+plt.title("Separación de clases con el método de Fisher")
+plt.legend()
+plt.savefig("Proyección de Fisher2.png", dpi = 500)
+plt.show()
+
 
 
 #=====================================
@@ -403,33 +493,60 @@ knn.fit(x_train, y_train)
 y_pred_knn = knn.predict(x_test)
 
 
+#=====================================
+# Logistic Regression =
+#=====================================
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+
+# Crear y entrenar modelo
+log_reg = LogisticRegression(max_iter=2000)
+log_reg.fit(x_train, y_train)
+
+# Predicciones
+y_pred_lr = log_reg.predict(x_test)
+
+
 
 
 # Guardar resultados en un diccionario
 results = {
     "Naive Bayes": {
         "Acc": accuracy_score(y_test, y_pred_nb),
-        "Precisión": precision_score(y_test, y_pred_nb),
+        "Precision": precision_score(y_test, y_pred_nb),
         "Recall": recall_score(y_test, y_pred_nb),
         "F1": f1_score(y_test, y_pred_nb)
     },
     "LDA": {
         "Acc": accuracy_score(y_test, y_pred_lda),
-        "Precisión": precision_score(y_test, y_pred_lda),
+        "Precision": precision_score(y_test, y_pred_lda),
         "Recall": recall_score(y_test, y_pred_lda),
         "F1": f1_score(y_test, y_pred_lda)
     },
     "QDA": {
         "Acc": accuracy_score(y_test, y_pred_qda),
-        "Precisión": precision_score(y_test, y_pred_qda),
+        "Precision": precision_score(y_test, y_pred_qda),
         "Recall": recall_score(y_test, y_pred_qda),
         "F1": f1_score(y_test, y_pred_qda)
     },
     "k-NN (k=5)": {
         "Acc": accuracy_score(y_test, y_pred_knn),
-        "Precisión": precision_score(y_test, y_pred_knn),
+        "Precision": precision_score(y_test, y_pred_knn),
         "Recall": recall_score(y_test, y_pred_knn),
         "F1": f1_score(y_test, y_pred_knn)
+    },
+    "Fisher": {
+        "Acc": accuracy_score(y_test, y_pred_F),
+        "Precision": precision_score(y_test, y_pred_F),
+        "Recall": recall_score(y_test, y_pred_F),
+        "F1": f1_score(y_test, y_pred_F)
+    },
+    "Logistic Regression": {
+        "Acc": accuracy_score(y_test, y_pred_lr),
+        "Precision": precision_score(y_test, y_pred_lr),
+        "Recall": recall_score(y_test, y_pred_lr),
+        "F1": f1_score(y_test, y_pred_lr)
     }
 }
 
@@ -442,7 +559,7 @@ print(df_results.round(3))
 # Validación cruzada comparativa
 #=====================================
 
-from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import cross_validate
 from sklearn.metrics import make_scorer, recall_score, precision_score, f1_score
 
@@ -450,18 +567,15 @@ models = {
     "Naive Bayes": GaussianNB(),
     "LDA": LinearDiscriminantAnalysis(),
     "QDA": QuadraticDiscriminantAnalysis(reg_param=0.1),
-    "k-NN (k=5)": KNeighborsClassifier(n_neighbors=5)
+    "k-NN (k=5)": KNeighborsClassifier(n_neighbors=5),
+    "Fisher": LinearDiscriminantAnalysis(n_components = 1),
+    "Logistic Regression": LogisticRegression(max_iter=2000)
 }
-
-
-# Definimos la especificidad como el recall de la clase negativa (0)
-specificity = make_scorer(recall_score, pos_label=0)
 
 scoring = {
     "Accuracy": "accuracy",
     "Precision": "precision",
-    "Recall": "recall",       # sensibilidad 
-    "Specificity": specificity,
+    "Recall": "recall",       # Sensibilidad 
     "F1": "f1",
 }
 
@@ -495,11 +609,13 @@ trained_models = {
     "Naive Bayes": nb,
     "LDA": lda,
     "QDA": qda,
-    "k-NN": knn
+    "k-NN": knn,
+    "Fisher": lda_F,
+    "Regresión logística": log_reg
 }
 
 # Graficar matrices de confusión
-fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+fig, axes = plt.subplots(3, 2, figsize=(10, 10))
 axes = axes.ravel()
 
 for ax, (name, model) in zip(axes, trained_models.items()):
@@ -511,5 +627,5 @@ for ax, (name, model) in zip(axes, trained_models.items()):
     ax.set_ylabel("Real")
 
 plt.tight_layout()
-plt.savefig("Matrices de confusion2.png", dpi = 500)
+plt.savefig("Matrices de confusion2.png", dpi = 700)
 plt.show()

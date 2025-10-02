@@ -1,9 +1,11 @@
+from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.linalg import inv, det
 from numpy.typing import NDArray
 import pandas as pd
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.naive_bayes import GaussianNB
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis
 from sklearn.neighbors import KNeighborsClassifier
@@ -66,6 +68,14 @@ def get_scenario(name:str):
     elif name == "correlacion_fuerte":  # cov correlated
         mu0 = np.array([0., 0.])
         mu1 = np.array([1.5, 1.5])
+        Sigma0 = np.array([[1.0, 0.9],
+                           [0.9, 1.0]])
+        Sigma1 = np.array([[1.0, 0.7],
+                           [0.7, 1.0]])
+        priors = (0.5, 0.5)
+    elif name == "medias_cercanas":  # cov correlated
+        mu0 = np.array([0., 0.])
+        mu1 = np.array([0.5, 0.5])
         Sigma0 = np.array([[1.0, 0.9],
                            [0.9, 1.0]])
         Sigma1 = np.array([[1.0, 0.7],
@@ -147,6 +157,84 @@ def bayes_pred(X:NDArray, mu0:NDArray, mu1:NDArray, S0:NDArray, S1:NDArray, pi0:
     d1 = bayes_scores(X, mu1, S1, pi1)
     return (d1 > d0).astype(int)
 
+
+ArrayF = NDArray[np.float64]
+ArrayI = NDArray[np.int_]
+
+@dataclass
+class FisherModel:
+    w: ArrayF          # projection direction
+    t: float           # threshold
+    m0: float          # mean projeted class 0
+    m1: float          # mean proyected class 1
+    s2: float          # pooled variance proyected
+def _class_stats(X: ArrayF, y: ArrayI, k: int):
+    Xk = X[y == k]
+    mu = Xk.mean(axis=0)
+    # cov con ddof=1 (unbiased).
+    cov = np.cov(Xk.T, bias=False) if len(Xk) > 1 else np.eye(X.shape[1]) * 1e-6
+    return Xk, mu, cov
+
+def fit_fisher_1d(
+    X: ArrayF,
+    y: ArrayI,
+    pi0: float = 0.5,
+    pi1: float = 0.5,
+    regularization: float = 1e-6,
+) -> FisherModel:
+    """Trains a Fisher 1D classifier."""
+    assert set(np.unique(y)) <= {0,1}, "y must be binary {0,1}"
+
+    X0, mu0, S0 = _class_stats(X, y, 0)
+    X1, mu1, S1 = _class_stats(X, y, 1)
+
+    # Scatter matrices
+    Sw = S0 + S1
+    # Minor regularization to avoid singularities
+    Sw = Sw + np.eye(Sw.shape[0]) * regularization
+
+    # Fisher direction
+    w = np.linalg.solve(Sw, (mu1 - mu0))
+    # Normalize w to unit norm (only direction matters)
+    w = w / np.linalg.norm(w)
+
+    # Project data
+    z0 = X0 @ w
+    z1 = X1 @ w
+    m0 = float(z0.mean())
+    m1 = float(z1.mean())
+    # Pooled variance
+    s2 = float(((z0.var(ddof=1)) * (len(z0)-1) + (z1.var(ddof=1)) * (len(z1)-1)) / (len(z0)+len(z1)-2))
+
+    # Threshold (with priors)
+    if np.isclose(pi0, pi1):
+        t = 0.5 * (m0 + m1)
+    else:
+        # avoid division by zero if m0 == m1
+        denom = max(abs(m1 - m0), 1e-12) * np.sign(m1 - m0)
+        t = 0.5 * (m0 + m1) + (s2 / (m1 - m0)) * np.log(pi0 / pi1)
+
+    return FisherModel(w=w, t=float(t), m0=m0, m1=m1, s2=s2)
+
+def predict_fisher_1d(model: FisherModel, X: ArrayF) -> ArrayI:
+    z = X @ model.w
+    return (z > model.t).astype(int)
+
+class Fisher1DClassifier(BaseEstimator, ClassifierMixin):
+    def __init__(self, pi0=0.5, pi1=0.5):
+        self.pi0 = pi0
+        self.pi1 = pi1
+        self.model_ = None
+
+    def fit(self, X, y):
+        # Use the fit_fisher_1d function to train the model
+        self.model_ = fit_fisher_1d(X, y, pi0=self.pi0, pi1=self.pi1)
+        return self
+
+    def predict(self, X):
+        return predict_fisher_1d(self.model_, X)
+
+
 def risk_bayes_montecarlo(mu0:NDArray, mu1:NDArray, S0:NDArray, S1:NDArray,
                           priors:tuple, N:int=200_000, 
                           rng:np.random.Generator=np.random.default_rng()):
@@ -227,6 +315,8 @@ def experiment_bucle(scenario_name:str,
                      n_list=n_list, k_list=k_list, R=R),
         "LDA": {n: [] for n in n_list},
         "QDA": {n: [] for n in n_list},
+        "NaiveBayes": {n: [] for n in n_list},  
+        'Fisher1D': {n: [] for n in n_list},
         "kNN": {(n,k): [] for n in n_list for k in k_list},
     }
 
@@ -235,14 +325,24 @@ def experiment_bucle(scenario_name:str,
             X, Y = generate_data(n, mu0, mu1, S0, S1, priors, rng=rng)
 
             # LDA / QDA with defined priors
-            lda = LinearDiscriminantAnalysis()#priors=list(priors))
-            qda = QuadraticDiscriminantAnalysis()#priors=list(priors))
+            lda = LinearDiscriminantAnalysis(priors=list(priors))
+            qda = QuadraticDiscriminantAnalysis(priors=list(priors))
+            # Naive Bayes (for reference, no priors)
+            gnb = GaussianNB()
+            # Fisher 1D with defined priors
+            fisher = Fisher1DClassifier(pi0=priors[0], pi1=priors[1])
+
+
             # The fit will be done inside risk_cv by cross_val_score
 
             err_lda = risk_cv(lda, X, Y).mean()
             err_qda = risk_cv(qda, X, Y).mean()
+            err_fisher = risk_cv(fisher, X, Y).mean()
+            err_gnb = risk_cv(gnb, X, Y).mean()  # for reference
             resultados["LDA"][n].append(err_lda)
             resultados["QDA"][n].append(err_qda)
+            resultados["NaiveBayes"][n].append(err_gnb)
+            resultados["Fisher1D"][n].append(err_fisher)
 
             # k-NN: iterating in k
             for k in k_list:
@@ -251,10 +351,12 @@ def experiment_bucle(scenario_name:str,
                 resultados["kNN"][(n,k)].append(err_knn)
 
     # Save mean and std of results
-    resumen = {"LDA": {}, "QDA": {}, "kNN": {}}
+    resumen = {"LDA": {}, "QDA": {}, "kNN": {}, "NaiveBayes": {}, "Fisher1D": {}}
     for n in n_list:
         v = np.array(resultados["LDA"][n]);  resumen["LDA"][n] = (v.mean(), v.std(ddof=1))
         v = np.array(resultados["QDA"][n]);  resumen["QDA"][n] = (v.mean(), v.std(ddof=1))
+        v = np.array(resultados["NaiveBayes"][n]);  resumen["NaiveBayes"][n] = (v.mean(), v.std(ddof=1))
+        v = np.array(resultados["Fisher1D"][n]);  resumen["Fisher1D"][n] = (v.mean(), v.std(ddof=1))
         for k in k_list:
             v = np.array(resultados["kNN"][(n,k)])
             resumen["kNN"][(n,k)] = (v.mean(), v.std(ddof=1))

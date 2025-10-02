@@ -21,6 +21,16 @@ def plot_L_vs_n(resumen:dict, meta:dict):
     qda_means = [resumen["QDA"][n][0] for n in n_list]
     qda_stds  = [resumen["QDA"][n][1] for n in n_list]
     plt.errorbar(n_list, qda_means, yerr=qda_stds, marker='s', label="QDA")
+    # Fisher 1D
+    if "Fisher1D" in resumen:
+        fisher_means = [resumen["Fisher1D"][n][0] for n in n_list]
+        fisher_stds  = [resumen["Fisher1D"][n][1] for n in n_list]
+        plt.errorbar(n_list, fisher_means, yerr=fisher_stds, marker='^', label="Fisher1D")
+    # Naive Bayes
+    if "NaiveBayes" in resumen:
+        gnb_means = [resumen["NaiveBayes"][n][0] for n in n_list]
+        gnb_stds  = [resumen["NaiveBayes"][n][1] for n in n_list]
+        plt.errorbar(n_list, gnb_means, yerr=gnb_stds, marker='x', label="Naive Bayes")
 
     plt.axhline(meta["L_bayes"], color="k", linestyle="--", label="Bayes")
     plt.xlabel("n (por clase)")
@@ -69,17 +79,22 @@ def plot_gap_vs_n(resumen:dict, meta:dict):
 
     lda_gap = [resumen["LDA"][n][0] - Lb for n in n_list]
     qda_gap = [resumen["QDA"][n][0] - Lb for n in n_list]
+    naive_bayes_gap = [resumen["NaiveBayes"][n][0] - Lb for n in n_list] if "NaiveBayes" in resumen else None
+    fisher_gap = [resumen["Fisher1D"][n][0] - Lb for n in n_list] if "Fisher1D" in resumen else None
 
     plt.figure()
     plt.plot(n_list, lda_gap, marker='o', label="LDA - Bayes")
     plt.plot(n_list, qda_gap, marker='s', label="QDA - Bayes")
+    if naive_bayes_gap is not None:
+        plt.plot(n_list, naive_bayes_gap, marker='x', label="Naive Bayes - Bayes")
+    if fisher_gap is not None:
+        plt.plot(n_list, fisher_gap, marker='^', label="Fisher1D - Bayes")
     plt.axhline(0, color="k", linestyle="--")
     plt.xlabel("n")
     plt.ylabel("Brecha de riesgo")
     plt.title(f"Brechas L(g) - L(Bayes) | Escenario: {meta['scenario']}")
     plt.legend()
     plt.show()
-
 
 def plot_scatter_vs_bayes(resumen:dict, meta:dict, pad:float=0.01,
                           jitter:float=0.0, include_knn:bool=False):
@@ -101,6 +116,14 @@ def plot_scatter_vs_bayes(resumen:dict, meta:dict, pad:float=0.01,
         xs.append(Lb); ys.append(m); labels.append(f"LDA n={n}"); markers.append('o')
     for n,(m,s) in resumen["QDA"].items():
         xs.append(Lb); ys.append(m); labels.append(f"QDA n={n}"); markers.append('s')
+    # Fisher 1D
+    if "Fisher1D" in resumen:
+        for n,(m,s) in resumen["Fisher1D"].items():
+            xs.append(Lb); ys.append(m); labels.append(f"Fisher1D n={n}"); markers.append('^')
+    # Naive Bayes
+    if "NaiveBayes" in resumen:
+        for n,(m,s) in resumen["NaiveBayes"].items():
+            xs.append(Lb); ys.append(m); labels.append(f"Naive Bayes n={n}"); markers.append('x')
 
     # (opcional) kNN
     if include_knn:

@@ -40,7 +40,7 @@ class SimulationRunner:
 
             # imprimir tabla Naive Bayes y Fisher
             for n, (m,s) in resumen["NaiveBayes"].items():
-                mf, sf = resumen["Fisher"][n]
+                mf, sf = resumen["Fisher1D"][n]
                 print(f" n={n:>3} | NaiveBayes: {m:.3f} ± {s:.3f} | Fisher: {mf:.3f} ± {sf:.3f}")
 
             # imprimir fila de kNN (ejemplo n=200)
